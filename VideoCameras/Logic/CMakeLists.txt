@@ -2,6 +2,8 @@ project(vtkSlicer${MODULE_NAME}ModuleLogic)
 
 set(KIT ${PROJECT_NAME})
 
+find_package(OpenCV REQUIRED)
+
 set(${KIT}_EXPORT_DIRECTIVE "VTK_SLICER_${MODULE_NAME_UPPER}_MODULE_LOGIC_EXPORT")
 
 set(${KIT}_INCLUDE_DIRECTORIES
@@ -14,6 +16,7 @@ set(${KIT}_SRCS
 
 set(${KIT}_TARGET_LIBRARIES
   vtkSlicer${MODULE_NAME}ModuleMRML
+  opencv_imgproc
   )
 
 #-----------------------------------------------------------------------------

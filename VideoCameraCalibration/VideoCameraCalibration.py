@@ -101,6 +101,7 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
     self.trackerContainer = None
     self.intrinsicsContainer = None
     self.autoSettingsContainer = None
+    self.manualSettingsContainer = None
 
     # Inputs
     self.imageSelector = None
@@ -114,10 +115,8 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
 
     # Tracker
     self.manualButton = None
-    self.semiAutoButton = None
     self.manualModeButton = None
     self.autoModeButton = None
-    self.semiAutoModeButton = None
     self.autoButton = None
     self.resetButton = None
     self.resetPtLButton = None
@@ -177,12 +176,11 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       self.trackerContainer = VideoCameraCalibrationWidget.get(self.widget, "collapsibleButton_Tracker")
       self.intrinsicsContainer = VideoCameraCalibrationWidget.get(self.widget, "collapsibleButton_Intrinsics")
       self.manualButton = VideoCameraCalibrationWidget.get(self.widget, "pushButton_Manual")
-      self.semiAutoButton = VideoCameraCalibrationWidget.get(self.widget, "pushButton_SemiAuto")
       self.autoButton = VideoCameraCalibrationWidget.get(self.widget, "pushButton_Automatic")
       self.manualModeButton = VideoCameraCalibrationWidget.get(self.widget, "radioButton_Manual")
-      self.semiAutoModeButton = VideoCameraCalibrationWidget.get(self.widget, "radioButton_SemiAuto")
       self.autoModeButton = VideoCameraCalibrationWidget.get(self.widget, "radioButton_Automatic")
       self.autoSettingsContainer = VideoCameraCalibrationWidget.get(self.widget, "groupBox_AutoSettings")
+      self.manualSettingsContainer = VideoCameraCalibrationWidget.get(self.widget, "groupBox_ManualParameters")
       self.resetPtLButton = VideoCameraCalibrationWidget.get(self.widget, "pushButton_resetPtL")
       self.trackerResultsLabel = VideoCameraCalibrationWidget.get(self.widget, "label_TrackerResultsValue")
       self.captureCountSpinBox = VideoCameraCalibrationWidget.get(self.widget, "spinBox_captureCount")
@@ -228,7 +226,6 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       self.captureCountSpinBox.connect('valueChanged(int)', self.onCaptureCountChanged)
 
       self.manualButton.connect('clicked(bool)', self.onManualButton)
-      self.semiAutoButton.connect('clicked(bool)', self.onSemiAutoButton)
       self.autoButton.connect('clicked(bool)', self.onAutoButton)
       self.manualModeButton.connect('clicked(bool)', self.onProcessingModeChanged)
       self.autoModeButton.connect('clicked(bool)', self.onProcessingModeChanged)
@@ -268,7 +265,6 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
     self.stylusTipTransformSelector.disconnect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
 
     self.manualButton.disconnect('clicked(bool)', self.onManualButton)
-    self.semiAutoButton.disconnect('clicked(bool)', self.onSemiAutoButton)
     self.autoButton.disconnect('clicked(bool)', self.onAutoButton)
     self.manualModeButton.disconnect('clicked(bool)', self.onProcessingModeChanged)
     self.autoModeButton.disconnect('clicked(bool)', self.onProcessingModeChanged)
@@ -427,19 +423,14 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
   def onProcessingModeChanged(self):
     if self.manualModeButton.checked:
       self.manualButton.setVisible(True)
-      self.semiAutoButton.setVisible(False)
       self.autoButton.setVisible(False)
       self.autoSettingsContainer.setVisible(False)
-    elif self.semiAutoModeButton.checked:
-      self.manualButton.setVisible(False)
-      self.semiAutoButton.setVisible(True)
-      self.autoButton.SetVisible(False)
-      self.autoSettingsContainer.setVisible(True)
+      self.manualSettingsContainer.setVisible(True)
     else:
       self.manualButton.setVisible(False)
-      self.semiAutoButton.setVisible(False)
       self.autoButton.setVisible(True)
       self.autoSettingsContainer.setVisible(True)
+      self.manualSettingsContainer.setVisible(False)
 
   def endManualCapturing(self):
     self.isManualCapturing = False
@@ -576,10 +567,8 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.RemoveNode(self.tempMarkupNode)
       self.tempMarkupNode = None
 
-  def onSemiAutoButton(self):
-    pass
-
   def onAutoButton(self):
+    # use video cameras logic c++ functionality
     pass
 
 # VideoCameraCalibrationLogic

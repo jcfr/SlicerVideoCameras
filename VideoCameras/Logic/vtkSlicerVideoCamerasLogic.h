@@ -21,17 +21,22 @@ Version:   $Revision: 1.0 $
 #ifndef __vtkSlicerVideoCamerasLogic_h
 #define __vtkSlicerVideoCamerasLogic_h
 
+// Video camera includes
+#include <vtkMRMLVideoCameraNode.h>
+
 // Slicer includes
-#include "vtkSlicerModuleLogic.h"
+#include <vtkSlicerModuleLogic.h>
+#include <vtkMRMLScalarVolumeNode.h>
 
 // MRML includes
 
 // STD includes
-#include <cstdlib>
+#include <array>
 
 #include "vtkSlicerVideoCamerasModuleLogicExport.h"
 
-class vtkMRMLVideoCameraNode;
+class vtkMultiThreader;
+class vtkMutexLock;
 
 /// \ingroup Slicer_QtModules_ExtensionTemplate
 class VTK_SLICER_VIDEOCAMERAS_MODULE_LOGIC_EXPORT vtkSlicerVideoCamerasLogic :
@@ -48,9 +53,23 @@ public:
   /// A storage node is also added into the scene
   vtkMRMLVideoCameraNode* AddVideoCamera(const char* filename, const char* nodeName = NULL);
 
+  ///
+  /// Threaded functionality to automatically segment a red circle from an image node (which is expected to continually change)
+  void StartAutomaticSegmentation(vtkMRMLScalarVolumeNode* volumeNode,
+                                  vtkMRMLVideoCameraNode* videoCamera,
+                                  const std::array<std::array<double, 3>, 4>& colorRanges,
+                                  double minDist,
+                                  double param1,
+                                  double param2,
+                                  int minRadius,
+                                  int maxRadius);
+  void StopAutomaticSegmentation();
+
 protected:
   vtkSlicerVideoCamerasLogic();
   virtual ~vtkSlicerVideoCamerasLogic();
+
+  static void* SegmentImageThreadFunction(void* ptr);
 
   virtual void SetMRMLSceneInternal(vtkMRMLScene* newScene);
   /// Register MRML Node classes to Scene. Gets called automatically when the MRMLScene is attached to this logic class.
@@ -58,8 +77,34 @@ protected:
   virtual void UpdateFromMRMLScene();
   virtual void OnMRMLSceneNodeAdded(vtkMRMLNode* node);
   virtual void OnMRMLSceneNodeRemoved(vtkMRMLNode* node);
-private:
 
+protected:
+  class vtkAutoSegmentationParameters : public vtkObject
+  {
+  public:
+    vtkSetObjectMacro(AutomaticSegmentationCameraNode, vtkMRMLVideoCameraNode);
+    vtkSetObjectMacro(AutomaticSegmentationImageNode, vtkMRMLScalarVolumeNode);
+
+    static vtkAutoSegmentationParameters* New();
+    vtkTypeMacro(vtkAutoSegmentationParameters, vtkObject);
+
+    vtkMRMLScalarVolumeNode*              AutomaticSegmentationImageNode;
+    vtkMRMLVideoCameraNode*               AutomaticSegmentationCameraNode;
+    std::array<std::array<double, 3>, 4>  ColorRanges;
+    double                                MinDist;
+    double                                Param1;
+    double                                Param2;
+    int                                   MinRadius;
+    int                                   MaxRadius;
+  };
+
+  vtkAutoSegmentationParameters*      SegmentationParameters;
+  vtkSmartPointer<vtkMultiThreader>   Threader;
+  int                                 ThreadID;
+  vtkSmartPointer<vtkMutexLock>       ThreadMutexLock;
+  std::atomic_bool                    ThreadRunFlag;
+
+private:
   vtkSlicerVideoCamerasLogic(const vtkSlicerVideoCamerasLogic&); // Not implemented
   void operator=(const vtkSlicerVideoCamerasLogic&); // Not implemented
 };
