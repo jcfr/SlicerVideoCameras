@@ -32,6 +32,7 @@ Version:   $Revision: 1.0 $
 
 // STD includes
 #include <array>
+#include <queue>
 
 #include "vtkSlicerVideoCamerasModuleLogicExport.h"
 
@@ -43,6 +44,22 @@ class VTK_SLICER_VIDEOCAMERAS_MODULE_LOGIC_EXPORT vtkSlicerVideoCamerasLogic :
   public vtkSlicerModuleLogic
 {
 public:
+  class vtkSegmentationResult : vtkObject
+  {
+  public:
+    static vtkSegmentationResult* New();
+    vtkTypeMacro(vtkSegmentationResult, vtkObject);
+
+    vtkVector2f Center;
+    float       Radius;
+  };
+
+public:
+  enum VideoCameraLogicEventType
+  {
+    AutomaticSegmentationResultEvent = 228400
+  };
+
   static vtkSlicerVideoCamerasLogic* New();
   vtkTypeMacro(vtkSlicerVideoCamerasLogic, vtkSlicerModuleLogic);
   void PrintSelf(ostream& os, vtkIndent indent);
@@ -65,11 +82,17 @@ public:
                                   int maxRadius);
   void StopAutomaticSegmentation();
 
+  ///
+  /// This function doesn't do anything other than fire events on the main GUI thread
+  /// Must be called regularly by the GUI thread
+  void PeriodicSegmentationProcess();
+
 protected:
   vtkSlicerVideoCamerasLogic();
   virtual ~vtkSlicerVideoCamerasLogic();
 
   static void* SegmentImageThreadFunction(void* ptr);
+  void QueueSegmentationResult(vtkSegmentationResult* result);
 
   virtual void SetMRMLSceneInternal(vtkMRMLScene* newScene);
   /// Register MRML Node classes to Scene. Gets called automatically when the MRMLScene is attached to this logic class.
@@ -103,6 +126,8 @@ protected:
   int                                 ThreadID;
   vtkSmartPointer<vtkMutexLock>       ThreadMutexLock;
   std::atomic_bool                    ThreadRunFlag;
+  vtkSmartPointer<vtkMutexLock>       EventQueueMutex;
+  std::queue<vtkSegmentationResult*>  ResultQueue;
 
 private:
   vtkSlicerVideoCamerasLogic(const vtkSlicerVideoCamerasLogic&); // Not implemented
