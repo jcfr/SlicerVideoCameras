@@ -39,21 +39,21 @@ Version:   $Revision: 1.0 $
 class vtkMultiThreader;
 class vtkMutexLock;
 
+class VTK_SLICER_VIDEOCAMERAS_MODULE_LOGIC_EXPORT vtkSlicerVideoCamerasAutomaticSegmentationResult : public vtkObject
+{
+public:
+  static vtkSlicerVideoCamerasAutomaticSegmentationResult* New();
+  vtkTypeMacro(vtkSlicerVideoCamerasAutomaticSegmentationResult, vtkObject);
+
+  float       CenterX;
+  float       CenterY;
+  float       Radius;
+};
+
 /// \ingroup Slicer_QtModules_ExtensionTemplate
 class VTK_SLICER_VIDEOCAMERAS_MODULE_LOGIC_EXPORT vtkSlicerVideoCamerasLogic :
   public vtkSlicerModuleLogic
 {
-public:
-  class vtkSegmentationResult : vtkObject
-  {
-  public:
-    static vtkSegmentationResult* New();
-    vtkTypeMacro(vtkSegmentationResult, vtkObject);
-
-    vtkVector2f Center;
-    float       Radius;
-  };
-
 public:
   enum VideoCameraLogicEventType
   {
@@ -74,12 +74,20 @@ public:
   /// Threaded functionality to automatically segment a red circle from an image node (which is expected to continually change)
   void StartAutomaticSegmentation(vtkMRMLScalarVolumeNode* volumeNode,
                                   vtkMRMLVideoCameraNode* videoCamera,
-                                  const std::array<std::array<double, 3>, 4>& colorRanges,
+                                  double colorRange1Low[3],
+                                  double colorRange1High[3],
+                                  double colorRange2Low[3],
+                                  double colorRange2High[3],
                                   double minDist,
                                   double param1,
                                   double param2,
                                   int minRadius,
                                   int maxRadius);
+  void SetAutomaticSegmentationParameters(double minDist,
+                                          double param1,
+                                          double param2,
+                                          int minRadius,
+                                          int maxRadius);
   void StopAutomaticSegmentation();
 
   ///
@@ -92,7 +100,7 @@ protected:
   virtual ~vtkSlicerVideoCamerasLogic();
 
   static void* SegmentImageThreadFunction(void* ptr);
-  void QueueSegmentationResult(vtkSegmentationResult* result);
+  void QueueSegmentationResult(vtkSlicerVideoCamerasAutomaticSegmentationResult* result);
 
   virtual void SetMRMLSceneInternal(vtkMRMLScene* newScene);
   /// Register MRML Node classes to Scene. Gets called automatically when the MRMLScene is attached to this logic class.
@@ -127,7 +135,7 @@ protected:
   vtkSmartPointer<vtkMutexLock>       ThreadMutexLock;
   std::atomic_bool                    ThreadRunFlag;
   vtkSmartPointer<vtkMutexLock>       EventQueueMutex;
-  std::queue<vtkSegmentationResult*>  ResultQueue;
+  std::queue<vtkSlicerVideoCamerasAutomaticSegmentationResult*>  ResultQueue;
 
 private:
   vtkSlicerVideoCamerasLogic(const vtkSlicerVideoCamerasLogic&); // Not implemented

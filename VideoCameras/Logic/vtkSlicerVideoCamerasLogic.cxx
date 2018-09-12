@@ -40,13 +40,15 @@ Version:   $Revision: 1.0 $
 //----------------------------------------------------------------------------
 vtkStandardNewMacro(vtkSlicerVideoCamerasLogic);
 vtkStandardNewMacro(vtkSlicerVideoCamerasLogic::vtkAutoSegmentationParameters);
-vtkStandardNewMacro(vtkSlicerVideoCamerasLogic::vtkSegmentationResult);
+vtkStandardNewMacro(vtkSlicerVideoCamerasAutomaticSegmentationResult);
 
 //----------------------------------------------------------------------------
 vtkSlicerVideoCamerasLogic::vtkSlicerVideoCamerasLogic()
   : SegmentationParameters(vtkAutoSegmentationParameters::New())
   , Threader(vtkSmartPointer<vtkMultiThreader>::New())
   , ThreadID(-1)
+  , ThreadMutexLock(vtkSmartPointer<vtkMutexLock>::New())
+  , EventQueueMutex(vtkSmartPointer<vtkMutexLock>::New())
 {
 }
 
@@ -124,7 +126,10 @@ vtkMRMLVideoCameraNode* vtkSlicerVideoCamerasLogic::AddVideoCamera(const char* f
 //----------------------------------------------------------------------------
 void vtkSlicerVideoCamerasLogic::StartAutomaticSegmentation(vtkMRMLScalarVolumeNode* volumeNode,
     vtkMRMLVideoCameraNode* cameraNode,
-    const std::array<std::array<double, 3>, 4>& colorRanges,
+    double colorRange1Low[3],
+    double colorRange1High[3],
+    double colorRange2Low[3],
+    double colorRange2High[3],
     double minDist,
     double param1,
     double param2,
@@ -134,7 +139,19 @@ void vtkSlicerVideoCamerasLogic::StartAutomaticSegmentation(vtkMRMLScalarVolumeN
   this->ThreadMutexLock->Lock();
   this->SegmentationParameters->SetAutomaticSegmentationImageNode(volumeNode);
   this->SegmentationParameters->SetAutomaticSegmentationCameraNode(cameraNode);
-  this->SegmentationParameters->ColorRanges = colorRanges;
+  this->SegmentationParameters->ColorRanges[0][0] = colorRange1Low[0];
+  this->SegmentationParameters->ColorRanges[0][1] = colorRange1Low[1];
+  this->SegmentationParameters->ColorRanges[0][2] = colorRange1Low[2];
+  this->SegmentationParameters->ColorRanges[1][0] = colorRange1High[0];
+  this->SegmentationParameters->ColorRanges[1][1] = colorRange1High[1];
+  this->SegmentationParameters->ColorRanges[1][2] = colorRange1High[2];
+  this->SegmentationParameters->ColorRanges[2][0] = colorRange2Low[0];
+  this->SegmentationParameters->ColorRanges[2][1] = colorRange2Low[1];
+  this->SegmentationParameters->ColorRanges[2][2] = colorRange2Low[2];
+  this->SegmentationParameters->ColorRanges[3][0] = colorRange2High[0];
+  this->SegmentationParameters->ColorRanges[3][1] = colorRange2High[1];
+  this->SegmentationParameters->ColorRanges[3][2] = colorRange2High[2];
+
   this->SegmentationParameters->MinDist = minDist;
   this->SegmentationParameters->Param1 = param1;
   this->SegmentationParameters->Param2 = param2;
@@ -148,6 +165,17 @@ void vtkSlicerVideoCamerasLogic::StartAutomaticSegmentation(vtkMRMLScalarVolumeN
   }
 
   this->ThreadMutexLock->Unlock();
+}
+
+//----------------------------------------------------------------------------
+void vtkSlicerVideoCamerasLogic::SetAutomaticSegmentationParameters(double minDist, double param1, double param2, int minRadius, int maxRadius)
+{
+  // Technically not thread-safe, but, meh...
+  this->SegmentationParameters->MinDist = minDist;
+  this->SegmentationParameters->Param1 = param1;
+  this->SegmentationParameters->Param2 = param2;
+  this->SegmentationParameters->MinRadius = minRadius;
+  this->SegmentationParameters->MaxRadius = maxRadius;
 }
 
 //----------------------------------------------------------------------------
@@ -171,7 +199,7 @@ void vtkSlicerVideoCamerasLogic::PeriodicSegmentationProcess()
   {
     return;
   }
-  vtkSegmentationResult* result = this->ResultQueue.front();
+  vtkSlicerVideoCamerasAutomaticSegmentationResult* result = this->ResultQueue.front();
   this->InvokeEvent(VideoCameraLogicEventType::AutomaticSegmentationResultEvent, (void*)result);
   this->ResultQueue.pop();
 
@@ -294,13 +322,20 @@ void* vtkSlicerVideoCamerasLogic::SegmentImageThreadFunction(void* ptr)
         cv::minEnclosingCircle((cv::Mat)contours_poly[i], centers[i], radii[i]); // Finds circle
       }
 
-      center = centers[0];
-      radius = radii[0];
+      if (centers.size() == 0)
+      {
+        continue;
+      }
+      else
+      {
+        center = centers[0];
+        radius = radii[0];
+      }
     }
 
-    vtkSegmentationResult* result = vtkSegmentationResult::New();
-    result->Center.SetX(center.x);
-    result->Center.SetY(center.y);
+    vtkSlicerVideoCamerasAutomaticSegmentationResult* result = vtkSlicerVideoCamerasAutomaticSegmentationResult::New();
+    result->CenterX = center.x;
+    result->CenterY = center.y;
     result->Radius = radius;
     logic->QueueSegmentationResult(result);
   }
@@ -313,7 +348,7 @@ void* vtkSlicerVideoCamerasLogic::SegmentImageThreadFunction(void* ptr)
 }
 
 //----------------------------------------------------------------------------
-void vtkSlicerVideoCamerasLogic::QueueSegmentationResult(vtkSegmentationResult* result)
+void vtkSlicerVideoCamerasLogic::QueueSegmentationResult(vtkSlicerVideoCamerasAutomaticSegmentationResult* result)
 {
   this->EventQueueMutex->Lock();
   this->ResultQueue.push(result);

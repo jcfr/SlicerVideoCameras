@@ -84,6 +84,11 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       return
 
     self.logic = VideoCameraCalibrationLogic()
+    self.videoCameraLogic = slicer.vtkSlicerVideoCamerasLogic()
+    self.videoCameraLogicObserverTag = self.videoCameraLogic.AddObserver(slicer.vtkSlicerVideoCamerasLogic.AutomaticSegmentationResultEvent, self.onAutomaticSegmentationResult)
+    self.autoSegmentationUITimer = qt.QTimer()
+    self.autoSegmentationUITimer.connect('timeout()', self.onAutoSegmentationTimer)
+    self.autoSegmentationState = 'stop'
 
     self.canSelectFiducials = True
     self.isManualCapturing = False
@@ -102,6 +107,12 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
     self.intrinsicsContainer = None
     self.autoSettingsContainer = None
     self.manualSettingsContainer = None
+
+    self.minDistSpinBox = None
+    self.param1SpinBox = None
+    self.param2SpinBox = None
+    self.minRadiusSpinBox = None
+    self.maxRadiusSpinBox = None
 
     # Inputs
     self.imageSelector = None
@@ -185,6 +196,11 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       self.trackerResultsLabel = VideoCameraCalibrationWidget.get(self.widget, "label_TrackerResultsValue")
       self.captureCountSpinBox = VideoCameraCalibrationWidget.get(self.widget, "spinBox_captureCount")
       self.stylusTipTransformStatusLabel = VideoCameraCalibrationWidget.get(self.widget, "label_StylusTipToCamera_Status")
+      self.minDistSpinBox = VideoCameraCalibrationWidget.get(self.widget, "doubleSpinBox_MinDist")
+      self.param1SpinBox = VideoCameraCalibrationWidget.get(self.widget, "doubleSpinBox_Param1")
+      self.param2SpinBox = VideoCameraCalibrationWidget.get(self.widget, "spinBox_Param2")
+      self.minRadiusSpinBox = VideoCameraCalibrationWidget.get(self.widget, "spinBox_MinRadius")
+      self.maxRadiusSpinBox = VideoCameraCalibrationWidget.get(self.widget, "spinBox_MaxRadius")
 
       # Intrinsic calibration members
       self.capIntrinsicButton = VideoCameraCalibrationWidget.get(self.widget, "pushButton_CaptureIntrinsic")
@@ -239,6 +255,12 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       self.asymmetricButton.connect('clicked(bool)', self.onFlagChanged)
       self.clusteringButton.connect('clicked(bool)', self.onFlagChanged)
 
+      self.minDistSpinBox.connect('valueChanged(double)', self.onAutoSegmentationParametersChanged)
+      self.param1SpinBox.connect('valueChanged(double)', self.onAutoSegmentationParametersChanged)
+      self.param2SpinBox.connect('valueChanged(double)', self.onAutoSegmentationParametersChanged)
+      self.minRadiusSpinBox.connect('valueChanged(int)', self.onAutoSegmentationParametersChanged)
+      self.maxRadiusSpinBox.connect('valueChanged(int)', self.onAutoSegmentationParametersChanged)
+
       # Adding an observer to scene to listen for mrml node
       self.sceneObserverTag = slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, self.onNodeAdded)
 
@@ -279,6 +301,8 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
     self.clusteringButton.disconnect('clicked(bool)', self.onFlagChanged)
 
     slicer.mrmlScene.RemoveObserver(self.sceneObserverTag)
+
+    self.videoCameraLogic.RemoveObserver(self.videoCameraLogicObserverTag)
 
   def onIntrinsicCapture(self):
     vtk_im = self.imageSelector.currentNode().GetImageData()
@@ -568,8 +592,53 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       self.tempMarkupNode = None
 
   def onAutoButton(self):
-    # use video cameras logic c++ functionality
-    pass
+    if self.autoSegmentationState == 'running':
+      # Change to stop
+      self.autoSegmentationState = 'stop'
+      self.autoButton.setText('Preview')
+      self.autoSegmentationUITimer.stop()
+      self.videoCameraLogic.StopAutomaticSegmentation()
+      return()
+    elif self.autoSegmentationState == 'preview':
+      # Change to running
+      self.autoSegmentationState = 'running'
+      self.autoButton.setText('Stop')
+    else:
+      # Change to preview
+      self.autoSegmentationState = 'preview'
+      self.autoButton.setText('Capture')
+
+      # start timer to call logic periodic process, which fires vtk events on segmentation result
+      self.autoSegmentationUITimer.start(16)
+
+      # use video cameras logic c++ functionality
+      self.videoCameraLogic.StartAutomaticSegmentation(self.imageSelector.currentNode(), \
+                                                       self.videoCameraSelector.currentNode(), \
+                                                       [0,70,50], \
+                                                       [10,255,255], \
+                                                       [160,70,50], \
+                                                       [179,255,255], \
+                                                       self.minDistSpinBox.value, \
+                                                       self.param1SpinBox.value, \
+                                                       self.param2SpinBox.value, \
+                                                       self.minRadiusSpinBox.value, \
+                                                       self.maxRadiusSpinBox.value)
+
+  def onAutoSegmentationParametersChanged(self):
+    self.videoCameraLogic.SetAutomaticSegmentationParameters(self.minDistSpinBox.value, \
+                                                             self.param1SpinBox.value, \
+                                                             self.param2SpinBox.value, \
+                                                             self.minRadiusSpinBox.value, \
+                                                             self.maxRadiusSpinBox.value)
+
+  def onAutoSegmentationTimer(self):
+    self.videoCameraLogic.PeriodicSegmentationProcess()
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onAutomaticSegmentationResult(self, caller, event, callData):
+    if self.autoSegmentationState == 'running':
+      # TODO: do stuff
+      pass
 
 # VideoCameraCalibrationLogic
 class VideoCameraCalibrationLogic(ScriptedLoadableModuleLogic):
