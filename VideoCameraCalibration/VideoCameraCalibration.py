@@ -255,12 +255,6 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       self.asymmetricButton.connect('clicked(bool)', self.onFlagChanged)
       self.clusteringButton.connect('clicked(bool)', self.onFlagChanged)
 
-      self.minDistSpinBox.connect('valueChanged(double)', self.onAutoSegmentationParametersChanged)
-      self.param1SpinBox.connect('valueChanged(double)', self.onAutoSegmentationParametersChanged)
-      self.param2SpinBox.connect('valueChanged(double)', self.onAutoSegmentationParametersChanged)
-      self.minRadiusSpinBox.connect('valueChanged(int)', self.onAutoSegmentationParametersChanged)
-      self.maxRadiusSpinBox.connect('valueChanged(int)', self.onAutoSegmentationParametersChanged)
-
       # Adding an observer to scene to listen for mrml node
       self.sceneObserverTag = slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, self.onNodeAdded)
 
@@ -624,13 +618,6 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
                                                        self.param2SpinBox.value, \
                                                        self.minRadiusSpinBox.value, \
                                                        self.maxRadiusSpinBox.value)
-
-  def onAutoSegmentationParametersChanged(self):
-    self.videoCameraLogic.SetAutomaticSegmentationParameters(self.minDistSpinBox.value, \
-                                                             self.param1SpinBox.value, \
-                                                             self.param2SpinBox.value, \
-                                                             self.minRadiusSpinBox.value, \
-                                                             self.maxRadiusSpinBox.value)
 
   def onAutoSegmentationTimer(self):
     self.videoCameraLogic.PeriodicSegmentationProcess()
