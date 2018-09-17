@@ -612,15 +612,13 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       self.autoSegmentationUITimer.start(16)
 
       # use video cameras logic c++ functionality
-      tipMat = vtk.vtkMatrix4x4()
-      self.stylusTipTransformSelector.currentNode().GetMatrixTransformToParent(tipMat)
       self.videoCameraLogic.SegmentCircleInImageAsync(self.imageSelector.currentNode(), \
                                                        self.videoCameraSelector.currentNode(), \
+                                                       self.stylusTipTransformSelector.currentNode(), \
                                                        [0,70,50], \
                                                        [10,255,255], \
                                                        [160,70,50], \
                                                        [179,255,255], \
-                                                       tipMat, \
                                                        self.minDistSpinBox.value, \
                                                        self.param1SpinBox.value, \
                                                        self.param2SpinBox.value, \
@@ -640,8 +638,23 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onAutomaticSegmentationResult(self, caller, event, callData):
     if self.autoSegmentationState == 'running':
-      # TODO: do stuff
+      # TODO: process segmented center in image and add to registration input
       pass
+
+    if self.autoSegmentationState == 'running' or self.autoSegmentationState == 'preview':
+      # call it again with latest inputs parameters
+      self.videoCameraLogic.SegmentCircleInImageAsync(self.imageSelector.currentNode(), \
+                                                       self.videoCameraSelector.currentNode(), \
+                                                       self.stylusTipTransformSelector.currentNode(), \
+                                                       [0,70,50], \
+                                                       [10,255,255], \
+                                                       [160,70,50], \
+                                                       [179,255,255], \
+                                                       self.minDistSpinBox.value, \
+                                                       self.param1SpinBox.value, \
+                                                       self.param2SpinBox.value, \
+                                                       self.minRadiusSpinBox.value, \
+                                                       self.maxRadiusSpinBox.value)
 
 # VideoCameraCalibrationLogic
 class VideoCameraCalibrationLogic(ScriptedLoadableModuleLogic):
