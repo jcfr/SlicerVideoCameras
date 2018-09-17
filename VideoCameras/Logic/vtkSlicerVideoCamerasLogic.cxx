@@ -44,8 +44,7 @@ vtkStandardNewMacro(vtkSlicerVideoCamerasAutomaticSegmentationResult);
 
 //----------------------------------------------------------------------------
 vtkSlicerVideoCamerasLogic::vtkSlicerVideoCamerasLogic()
-  : SegmentationParameters(vtkAutoSegmentationParameters::New())
-  , Threader(vtkSmartPointer<vtkMultiThreader>::New())
+  : Threader(vtkSmartPointer<vtkMultiThreader>::New())
   , ThreadID(-1)
   , ThreadMutexLock(vtkSmartPointer<vtkMutexLock>::New())
   , EventQueueMutex(vtkSmartPointer<vtkMutexLock>::New())
@@ -55,7 +54,7 @@ vtkSlicerVideoCamerasLogic::vtkSlicerVideoCamerasLogic()
 //----------------------------------------------------------------------------
 vtkSlicerVideoCamerasLogic::~vtkSlicerVideoCamerasLogic()
 {
-  SegmentationParameters->Delete();
+
 }
 
 //----------------------------------------------------------------------------
@@ -124,12 +123,13 @@ vtkMRMLVideoCameraNode* vtkSlicerVideoCamerasLogic::AddVideoCamera(const char* f
 }
 
 //----------------------------------------------------------------------------
-void vtkSlicerVideoCamerasLogic::StartAutomaticSegmentation(vtkMRMLScalarVolumeNode* volumeNode,
+void vtkSlicerVideoCamerasLogic::SegmentCircleInImageAsync(vtkMRMLScalarVolumeNode* volumeNode,
     vtkMRMLVideoCameraNode* cameraNode,
     double colorRange1Low[3],
     double colorRange1High[3],
     double colorRange2Low[3],
     double colorRange2High[3],
+    vtkMatrix4x4* tipToCameraTransform,
     double minDist,
     double param1,
     double param2,
@@ -137,55 +137,35 @@ void vtkSlicerVideoCamerasLogic::StartAutomaticSegmentation(vtkMRMLScalarVolumeN
     int maxRadius)
 {
   this->ThreadMutexLock->Lock();
-  this->SegmentationParameters->SetAutomaticSegmentationImageNode(volumeNode);
-  this->SegmentationParameters->SetAutomaticSegmentationCameraNode(cameraNode);
-  this->SegmentationParameters->ColorRanges[0][0] = colorRange1Low[0];
-  this->SegmentationParameters->ColorRanges[0][1] = colorRange1Low[1];
-  this->SegmentationParameters->ColorRanges[0][2] = colorRange1Low[2];
-  this->SegmentationParameters->ColorRanges[1][0] = colorRange1High[0];
-  this->SegmentationParameters->ColorRanges[1][1] = colorRange1High[1];
-  this->SegmentationParameters->ColorRanges[1][2] = colorRange1High[2];
-  this->SegmentationParameters->ColorRanges[2][0] = colorRange2Low[0];
-  this->SegmentationParameters->ColorRanges[2][1] = colorRange2Low[1];
-  this->SegmentationParameters->ColorRanges[2][2] = colorRange2Low[2];
-  this->SegmentationParameters->ColorRanges[3][0] = colorRange2High[0];
-  this->SegmentationParameters->ColorRanges[3][1] = colorRange2High[1];
-  this->SegmentationParameters->ColorRanges[3][2] = colorRange2High[2];
 
-  this->SegmentationParameters->MinDist = minDist;
-  this->SegmentationParameters->Param1 = param1;
-  this->SegmentationParameters->Param2 = param2;
-  this->SegmentationParameters->MinRadius = minRadius;
-  this->SegmentationParameters->MaxRadius = maxRadius;
+  vtkAutoSegmentationParameters* segmentationParameters = vtkAutoSegmentationParameters::New();
+
+  segmentationParameters->SetAutomaticSegmentationImageNode(volumeNode);
+  segmentationParameters->SetAutomaticSegmentationCameraNode(cameraNode);
+  segmentationParameters->ColorRanges[0][0] = colorRange1Low[0];
+  segmentationParameters->ColorRanges[0][1] = colorRange1Low[1];
+  segmentationParameters->ColorRanges[0][2] = colorRange1Low[2];
+  segmentationParameters->ColorRanges[1][0] = colorRange1High[0];
+  segmentationParameters->ColorRanges[1][1] = colorRange1High[1];
+  segmentationParameters->ColorRanges[1][2] = colorRange1High[2];
+  segmentationParameters->ColorRanges[2][0] = colorRange2Low[0];
+  segmentationParameters->ColorRanges[2][1] = colorRange2Low[1];
+  segmentationParameters->ColorRanges[2][2] = colorRange2Low[2];
+  segmentationParameters->ColorRanges[3][0] = colorRange2High[0];
+  segmentationParameters->ColorRanges[3][1] = colorRange2High[1];
+  segmentationParameters->ColorRanges[3][2] = colorRange2High[2];
+  segmentationParameters->MinDist = minDist;
+  segmentationParameters->Param1 = param1;
+  segmentationParameters->Param2 = param2;
+  segmentationParameters->MinRadius = minRadius;
+  segmentationParameters->MaxRadius = maxRadius;
+
+  segmentationParameters->ParentLogic = this;
 
   if (volumeNode != nullptr)
   {
-    this->ThreadRunFlag = true;
-    this->ThreadID = this->Threader->SpawnThread((vtkThreadFunctionType)&vtkSlicerVideoCamerasLogic::SegmentImageThreadFunction, this);
+    this->ThreadID = this->Threader->SpawnThread((vtkThreadFunctionType)&vtkSlicerVideoCamerasLogic::SegmentImageThreadFunction, segmentationParameters);
   }
-
-  this->ThreadMutexLock->Unlock();
-}
-
-//----------------------------------------------------------------------------
-void vtkSlicerVideoCamerasLogic::SetAutomaticSegmentationParameters(double minDist, double param1, double param2, int minRadius, int maxRadius)
-{
-  // Technically not thread-safe, but, meh...
-  this->SegmentationParameters->MinDist = minDist;
-  this->SegmentationParameters->Param1 = param1;
-  this->SegmentationParameters->Param2 = param2;
-  this->SegmentationParameters->MinRadius = minRadius;
-  this->SegmentationParameters->MaxRadius = maxRadius;
-}
-
-//----------------------------------------------------------------------------
-void vtkSlicerVideoCamerasLogic::StopAutomaticSegmentation()
-{
-  this->ThreadMutexLock->Lock();
-
-  this->SegmentationParameters->SetAutomaticSegmentationImageNode(nullptr);
-  this->SegmentationParameters->SetAutomaticSegmentationCameraNode(nullptr);
-  this->ThreadRunFlag = false;
 
   this->ThreadMutexLock->Unlock();
 }
@@ -210,140 +190,142 @@ void vtkSlicerVideoCamerasLogic::PeriodicSegmentationProcess()
 void* vtkSlicerVideoCamerasLogic::SegmentImageThreadFunction(void* ptr)
 {
   vtkMultiThreader::ThreadInfo* vinfo = static_cast<vtkMultiThreader::ThreadInfo*>(ptr);
-  vtkSlicerVideoCamerasLogic* logic = static_cast<vtkSlicerVideoCamerasLogic*>(vinfo->UserData);
+  vtkAutoSegmentationParameters* params = static_cast<vtkAutoSegmentationParameters*>(vinfo->UserData);
 
   auto lastModifiedTime = 0;
   auto modifiedTime = 0;
-  while (logic->ThreadRunFlag)
+
+  modifiedTime = params->AutomaticSegmentationImageNode->GetMTime();
+  if (modifiedTime == lastModifiedTime)
   {
-    modifiedTime = logic->SegmentationParameters->AutomaticSegmentationImageNode->GetMTime();
-    if (modifiedTime == lastModifiedTime)
-    {
-      std::this_thread::sleep_for(std::chrono::milliseconds(16));
-      continue;
-    }
-    lastModifiedTime = modifiedTime;
-    auto imageData = logic->SegmentationParameters->AutomaticSegmentationImageNode->GetImageData();
-    auto dims = imageData->GetDimensions();
-
-    auto intrinsics = logic->SegmentationParameters->AutomaticSegmentationCameraNode->GetIntrinsicMatrix();
-    cv::Mat cvIntrinsics(3, 3, CV_64F, intrinsics->GetData());
-    auto distortion = logic->SegmentationParameters->AutomaticSegmentationCameraNode->GetDistortionCoefficients();
-    assert(distortion->GetNumberOfValues() == 5 || distortion->GetNumberOfValues() == 8 || distortion->GetNumberOfValues() == 12 || distortion->GetNumberOfValues() == 14);
-    cv::Mat cvDistortion(1, distortion->GetNumberOfValues(), CV_64F);
-    for (int i = 0; i < distortion->GetNumberOfValues(); ++i)
-    {
-      cvDistortion.at<double>(0, i) = distortion->GetValue(i);
-    }
-
-    // Undistort the image, copy image
-    cv::Mat cvImage;
-    cv::Mat(dims[1], dims[0], CV_8UC3, imageData->GetScalarPointer(0, 0, 0)).copyTo(cvImage);
-    auto cvUndistorted = cv::Mat(dims[1], dims[0], CV_8UC3);
-    cv::undistort(cvImage, cvUndistorted, cvIntrinsics, cvDistortion);
-    cv::flip(cvUndistorted, cvUndistorted, 0);
-
-    // Convert RGB image to HSV image
-    cv::Mat cvHSV;
-    cv::cvtColor(cvUndistorted, cvHSV, cv::COLOR_RGB2HSV);
-
-    // Filter everything except desired ranges
-    cv::Mat cvThresholdLower, cvThresholdUpper;
-    cv::inRange(cvHSV,
-                cv::Scalar(logic->SegmentationParameters->ColorRanges[0][0],
-                           logic->SegmentationParameters->ColorRanges[0][1],
-                           logic->SegmentationParameters->ColorRanges[0][2]),
-                cv::Scalar(logic->SegmentationParameters->ColorRanges[1][0],
-                           logic->SegmentationParameters->ColorRanges[1][1],
-                           logic->SegmentationParameters->ColorRanges[1][2]),
-                cvThresholdLower);
-    cv::inRange(cvHSV,
-                cv::Scalar(logic->SegmentationParameters->ColorRanges[2][0],
-                           logic->SegmentationParameters->ColorRanges[2][1],
-                           logic->SegmentationParameters->ColorRanges[2][2]),
-                cv::Scalar(logic->SegmentationParameters->ColorRanges[3][0],
-                           logic->SegmentationParameters->ColorRanges[3][1],
-                           logic->SegmentationParameters->ColorRanges[3][2]),
-                cvThresholdUpper);
-    cv::Mat cvMask;
-    cv::addWeighted(cvThresholdLower, 1.0, cvThresholdUpper, 1.0, 0.0, cvMask);
-
-    // Create a gaussian & median blur filter
-    cv::medianBlur(cvMask, cvMask, 5);
-    cv::GaussianBlur(cvMask, cvMask, cv::Size(9, 9), 2, 2);
-
-    // Apply the Hough Transform to find the circles
-    std::vector<cv::Vec3f> circles;
-    cv::HoughCircles(cvMask, circles,
-                     cv::HOUGH_GRADIENT,
-                     2,
-                     cvMask.rows / logic->SegmentationParameters->MinDist,
-                     logic->SegmentationParameters->Param1,
-                     logic->SegmentationParameters->Param2,
-                     logic->SegmentationParameters->MinRadius,
-                     logic->SegmentationParameters->MaxRadius);
-
-    // Extract most likely center
-    cv::Point2f center;
-    float radius;
-    if (circles.size() > 0)
-    {
-      center = cv::Point2f(circles[0][0], circles[0][1]);
-      radius = circles[0][2];
-    }
-    else if (circles.size() == 0)
-    {
-      cv::Mat cvCannyOutput;
-      std::vector<std::vector<cv::Point>> contours;
-      std::vector<cv::Vec4i> hierarchy;
-
-      int thresh = 100;
-      int max_thresh = 255;
-      cv::RNG rng(12345);
-
-      cv::medianBlur(cvMask, cvMask, 3);
-
-      // Detect edges using canny
-      cv::Canny(cvMask, cvCannyOutput, thresh, thresh * 2, 3);
-
-      // Find contours
-      cv::findContours(cvCannyOutput, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
-
-      /// Approximate contours to polygons + get bounding rects and circles
-      std::vector<std::vector<cv::Point>> contours_poly(contours.size());
-      std::vector<cv::Rect> boundRect(contours.size());
-      std::vector<cv::Point2f> centers(contours.size());
-      std::vector<float> radii(contours.size());
-
-      for (std::vector<std::vector<cv::Point>>::size_type i = 0; i < contours.size(); i++)
-      {
-        cv::approxPolyDP(cv::Mat(contours[i]), contours_poly[i], 3, true); // Finds polygon
-        boundRect[i] = cv::boundingRect(cv::Mat(contours_poly[i]));      // Finds rectangle
-        cv::minEnclosingCircle((cv::Mat)contours_poly[i], centers[i], radii[i]); // Finds circle
-      }
-
-      if (centers.size() == 0)
-      {
-        continue;
-      }
-      else
-      {
-        center = centers[0];
-        radius = radii[0];
-      }
-    }
-
-    vtkSlicerVideoCamerasAutomaticSegmentationResult* result = vtkSlicerVideoCamerasAutomaticSegmentationResult::New();
-    result->CenterX = center.x;
-    result->CenterY = center.y;
-    result->Radius = radius;
-    logic->QueueSegmentationResult(result);
+    params->Delete();
+    return 0;
   }
+  lastModifiedTime = modifiedTime;
+  auto imageData = params->AutomaticSegmentationImageNode->GetImageData();
+  auto dims = imageData->GetDimensions();
+
+  auto intrinsics = params->AutomaticSegmentationCameraNode->GetIntrinsicMatrix();
+  cv::Mat cvIntrinsics(3, 3, CV_64F, intrinsics->GetData());
+  auto distortion = params->AutomaticSegmentationCameraNode->GetDistortionCoefficients();
+  assert(distortion->GetNumberOfValues() == 5 || distortion->GetNumberOfValues() == 8 || distortion->GetNumberOfValues() == 12 || distortion->GetNumberOfValues() == 14);
+  cv::Mat cvDistortion(1, distortion->GetNumberOfValues(), CV_64F);
+  for (int i = 0; i < distortion->GetNumberOfValues(); ++i)
+  {
+    cvDistortion.at<double>(0, i) = distortion->GetValue(i);
+  }
+
+  // Undistort the image, copy image
+  cv::Mat cvImage;
+  cv::Mat(dims[1], dims[0], CV_8UC3, imageData->GetScalarPointer(0, 0, 0)).copyTo(cvImage);
+
+  auto cvUndistorted = cv::Mat(dims[1], dims[0], CV_8UC3);
+  cv::undistort(cvImage, cvUndistorted, cvIntrinsics, cvDistortion);
+  cv::flip(cvUndistorted, cvUndistorted, 0);
+
+  // Convert RGB image to HSV image
+  cv::Mat cvHSV;
+  cv::cvtColor(cvUndistorted, cvHSV, cv::COLOR_RGB2HSV);
+
+  // Filter everything except desired ranges
+  cv::Mat cvThresholdLower, cvThresholdUpper;
+  cv::inRange(cvHSV,
+              cv::Scalar(params->ColorRanges[0][0],
+                         params->ColorRanges[0][1],
+                         params->ColorRanges[0][2]),
+              cv::Scalar(params->ColorRanges[1][0],
+                         params->ColorRanges[1][1],
+                         params->ColorRanges[1][2]),
+              cvThresholdLower);
+  cv::inRange(cvHSV,
+              cv::Scalar(params->ColorRanges[2][0],
+                         params->ColorRanges[2][1],
+                         params->ColorRanges[2][2]),
+              cv::Scalar(params->ColorRanges[3][0],
+                         params->ColorRanges[3][1],
+                         params->ColorRanges[3][2]),
+              cvThresholdUpper);
+  cv::Mat cvMask;
+  cv::addWeighted(cvThresholdLower, 1.0, cvThresholdUpper, 1.0, 0.0, cvMask);
+
+  // Create a gaussian & median blur filter
+  cv::medianBlur(cvMask, cvMask, 5);
+  cv::GaussianBlur(cvMask, cvMask, cv::Size(9, 9), 2, 2);
+
+  // Apply the Hough Transform to find the circles
+  std::vector<cv::Vec3f> circles;
+  cv::HoughCircles(cvMask, circles,
+                   cv::HOUGH_GRADIENT,
+                   2,
+                   cvMask.rows / params->MinDist,
+                   params->Param1,
+                   params->Param2,
+                   params->MinRadius,
+                   params->MaxRadius);
+
+  // Extract most likely center
+  cv::Point2f center;
+  float radius;
+  if (circles.size() > 0)
+  {
+    center = cv::Point2f(circles[0][0], circles[0][1]);
+    radius = circles[0][2];
+  }
+  else if (circles.size() == 0)
+  {
+    cv::Mat cvCannyOutput;
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<cv::Vec4i> hierarchy;
+
+    int thresh = 100;
+    int max_thresh = 255;
+    cv::RNG rng(12345);
+
+    cv::medianBlur(cvMask, cvMask, 3);
+
+    // Detect edges using canny
+    cv::Canny(cvMask, cvCannyOutput, thresh, thresh * 2, 3);
+
+    // Find contours
+    cv::findContours(cvCannyOutput, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+
+    /// Approximate contours to polygons + get bounding rects and circles
+    std::vector<std::vector<cv::Point>> contours_poly(contours.size());
+    std::vector<cv::Rect> boundRect(contours.size());
+    std::vector<cv::Point2f> centers(contours.size());
+    std::vector<float> radii(contours.size());
+
+    for (std::vector<std::vector<cv::Point>>::size_type i = 0; i < contours.size(); i++)
+    {
+      cv::approxPolyDP(cv::Mat(contours[i]), contours_poly[i], 3, true); // Finds polygon
+      boundRect[i] = cv::boundingRect(cv::Mat(contours_poly[i]));      // Finds rectangle
+      cv::minEnclosingCircle((cv::Mat)contours_poly[i], centers[i], radii[i]); // Finds circle
+    }
+
+    if (centers.size() == 0)
+    {
+      params->Delete();
+      return 0;
+    }
+    else
+    {
+      center = centers[0];
+      radius = radii[0];
+    }
+  }
+
+  vtkSlicerVideoCamerasAutomaticSegmentationResult* result = vtkSlicerVideoCamerasAutomaticSegmentationResult::New();
+  result->CenterX = center.x;
+  result->CenterY = center.y;
+  result->Radius = radius;
+  params->ParentLogic->QueueSegmentationResult(result);
 
   // Signal to the threader that this thread has become free
   vinfo->ActiveFlagLock->Lock();
   (*vinfo->ActiveFlag) = 0;
   vinfo->ActiveFlagLock->Unlock();
+
+  params->Delete();
   return 0;
 }
 

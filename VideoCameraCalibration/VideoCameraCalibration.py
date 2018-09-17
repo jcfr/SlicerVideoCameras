@@ -612,12 +612,15 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       self.autoSegmentationUITimer.start(16)
 
       # use video cameras logic c++ functionality
-      self.videoCameraLogic.StartAutomaticSegmentation(self.imageSelector.currentNode(), \
+      tipMat = vtk.vtkMatrix4x4()
+      self.stylusTipTransformSelector.currentNode().GetMatrixTransformToParent(tipMat)
+      self.videoCameraLogic.SegmentCircleInImageAsync(self.imageSelector.currentNode(), \
                                                        self.videoCameraSelector.currentNode(), \
                                                        [0,70,50], \
                                                        [10,255,255], \
                                                        [160,70,50], \
                                                        [179,255,255], \
+                                                       tipMat, \
                                                        self.minDistSpinBox.value, \
                                                        self.param1SpinBox.value, \
                                                        self.param2SpinBox.value, \

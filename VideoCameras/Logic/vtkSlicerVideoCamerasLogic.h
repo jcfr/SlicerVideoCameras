@@ -72,23 +72,18 @@ public:
 
   ///
   /// Threaded functionality to automatically segment a red circle from an image node (which is expected to continually change)
-  void StartAutomaticSegmentation(vtkMRMLScalarVolumeNode* volumeNode,
-                                  vtkMRMLVideoCameraNode* videoCamera,
-                                  double colorRange1Low[3],
-                                  double colorRange1High[3],
-                                  double colorRange2Low[3],
-                                  double colorRange2High[3],
-                                  double minDist,
-                                  double param1,
-                                  double param2,
-                                  int minRadius,
-                                  int maxRadius);
-  void SetAutomaticSegmentationParameters(double minDist,
-                                          double param1,
-                                          double param2,
-                                          int minRadius,
-                                          int maxRadius);
-  void StopAutomaticSegmentation();
+  void SegmentCircleInImageAsync(vtkMRMLScalarVolumeNode* volumeNode,
+                                 vtkMRMLVideoCameraNode* videoCamera,
+                                 double colorRange1Low[3],
+                                 double colorRange1High[3],
+                                 double colorRange2Low[3],
+                                 double colorRange2High[3],
+                                 vtkMatrix4x4* tipToCameraTransform,
+                                 double minDist,
+                                 double param1,
+                                 double param2,
+                                 int minRadius,
+                                 int maxRadius);
 
   ///
   /// This function doesn't do anything other than fire events on the main GUI thread
@@ -122,18 +117,20 @@ protected:
     vtkMRMLScalarVolumeNode*              AutomaticSegmentationImageNode;
     vtkMRMLVideoCameraNode*               AutomaticSegmentationCameraNode;
     std::array<std::array<double, 3>, 4>  ColorRanges;
+    vtkMatrix4x4*                         TipTransform;
+    vtkMatrix4x4*                         CameraTransform;
     double                                MinDist;
     double                                Param1;
     double                                Param2;
     int                                   MinRadius;
     int                                   MaxRadius;
+
+    vtkSlicerVideoCamerasLogic*           ParentLogic;
   };
 
-  vtkAutoSegmentationParameters*      SegmentationParameters;
   vtkSmartPointer<vtkMultiThreader>   Threader;
   int                                 ThreadID;
   vtkSmartPointer<vtkMutexLock>       ThreadMutexLock;
-  std::atomic_bool                    ThreadRunFlag;
   vtkSmartPointer<vtkMutexLock>       EventQueueMutex;
   std::queue<vtkSlicerVideoCamerasAutomaticSegmentationResult*>  ResultQueue;
 
