@@ -112,14 +112,14 @@ protected:
   public:
     vtkSetObjectMacro(AutomaticSegmentationCameraNode, vtkMRMLVideoCameraNode);
     vtkSetObjectMacro(AutomaticSegmentationImageNode, vtkMRMLScalarVolumeNode);
-    vtkSetObjectMacro(TipToCameraNode, vtkMRMLLinearTransformNode);
+    vtkSetObjectMacro(TipToCameraTransformNode, vtkMRMLLinearTransformNode);
 
     static vtkAutoSegmentationParameters* New();
     vtkTypeMacro(vtkAutoSegmentationParameters, vtkObject);
 
     vtkMRMLScalarVolumeNode*              AutomaticSegmentationImageNode;
     vtkMRMLVideoCameraNode*               AutomaticSegmentationCameraNode;
-    vtkMRMLLinearTransformNode*           TipToCameraNode;
+    vtkMRMLLinearTransformNode*           TipToCameraTransformNode;
     std::array<std::array<double, 3>, 4>  ColorRanges;
     double                                MinDist;
     double                                Param1;

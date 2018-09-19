@@ -142,7 +142,7 @@ void vtkSlicerVideoCamerasLogic::SegmentCircleInImageAsync(vtkMRMLScalarVolumeNo
 
   segmentationParameters->SetAutomaticSegmentationImageNode(volumeNode);
   segmentationParameters->SetAutomaticSegmentationCameraNode(cameraNode);
-  segmentationParameters->SetTipToCameraNode(tipToCameraNode);
+  segmentationParameters->SetTipToCameraTransformNode(tipToCameraNode);
   segmentationParameters->ColorRanges[0][0] = colorRange1Low[0];
   segmentationParameters->ColorRanges[0][1] = colorRange1Low[1];
   segmentationParameters->ColorRanges[0][2] = colorRange1Low[2];
@@ -278,13 +278,11 @@ void* vtkSlicerVideoCamerasLogic::SegmentImageThreadFunction(void* ptr)
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
 
-    int thresh = 100;
-    int max_thresh = 255;
-    cv::RNG rng(12345);
 
     cv::medianBlur(cvMask, cvMask, 3);
 
     // Detect edges using canny
+    const double thresh = 100.0;
     cv::Canny(cvMask, cvCannyOutput, thresh, thresh * 2, 3);
 
     // Find contours
@@ -320,7 +318,7 @@ void* vtkSlicerVideoCamerasLogic::SegmentImageThreadFunction(void* ptr)
   result->CenterY = center.y;
   result->Radius = radius;
   vtkNew<vtkMatrix4x4> temp;
-  params->TipToCameraNode->GetMatrixTransformToParent(temp);
+  params->TipToCameraTransformNode->GetMatrixTransformToParent(temp);
   result->Tip_Camera[0] = temp->GetElement(0, 3);
   result->Tip_Camera[1] = temp->GetElement(1, 3);
   result->Tip_Camera[2] = temp->GetElement(2, 3);
