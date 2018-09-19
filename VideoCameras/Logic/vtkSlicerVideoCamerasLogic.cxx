@@ -125,11 +125,11 @@ vtkMRMLVideoCameraNode* vtkSlicerVideoCamerasLogic::AddVideoCamera(const char* f
 //----------------------------------------------------------------------------
 void vtkSlicerVideoCamerasLogic::SegmentCircleInImageAsync(vtkMRMLScalarVolumeNode* volumeNode,
     vtkMRMLVideoCameraNode* cameraNode,
+    vtkMRMLLinearTransformNode* tipToCameraNode,
     double colorRange1Low[3],
     double colorRange1High[3],
     double colorRange2Low[3],
     double colorRange2High[3],
-    vtkMatrix4x4* tipToCameraTransform,
     double minDist,
     double param1,
     double param2,
@@ -318,6 +318,11 @@ void* vtkSlicerVideoCamerasLogic::SegmentImageThreadFunction(void* ptr)
   result->CenterX = center.x;
   result->CenterY = center.y;
   result->Radius = radius;
+  vtkNew<vtkMatrix4x4> temp;
+  params->TipToCameraNode->GetMatrixTransformToParent(temp);
+  result->Tip_Camera[0] = temp->GetElement(0, 3);
+  result->Tip_Camera[1] = temp->GetElement(1, 3);
+  result->Tip_Camera[2] = temp->GetElement(2, 3);
   params->ParentLogic->QueueSegmentationResult(result);
 
   // Signal to the threader that this thread has become free

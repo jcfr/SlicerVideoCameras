@@ -502,64 +502,9 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
       point[0,0,0] = abs(arr[0])
       point[0,0,1] = abs(arr[1])
 
-      # Get VideoCamera parameters
-      # Convert vtk to numpy
-      mtx = VideoCameraCalibrationWidget.vtk3x3ToNumpy(self.videoCameraSelector.currentNode().GetIntrinsicMatrix())
-
-      if self.videoCameraSelector.currentNode().GetDistortionCoefficients().GetNumberOfValues() != 0:
-        dist = np.asarray(np.zeros((1, self.videoCameraSelector.currentNode().GetDistortionCoefficients().GetNumberOfValues()), dtype=np.float64))
-        for i in range(0, self.videoCameraSelector.currentNode().GetDistortionCoefficients().GetNumberOfValues()):
-          dist[0, i] = self.videoCameraSelector.currentNode().GetDistortionCoefficients().GetValue(i)
-      else:
-        dist = np.asarray([], dtype=np.float64)
-
       tip_cam = [self.stylusTipToVideoCamera.GetElement(0, 3), self.stylusTipToVideoCamera.GetElement(1, 3), self.stylusTipToVideoCamera.GetElement(2, 3)]
 
-      # Origin - always 0, 0, 0
-      origin_sen = np.asarray([[0.0],[0.0],[0.0]], dtype=np.float64)
-
-      # Calculate the direction vector for the given pixel (after undistortion)
-      pixel = np.vstack((cv2.undistortPoints(point, mtx, dist, P=mtx), np.array([1.0], dtype=np.float64)))
-
-      # Find the inverse of the videoCamera intrinsic param matrix
-      # Calculate direction vector by multiplying the inverse of the intrinsic param matrix by the pixel
-      directionVec_sen = np.linalg.inv(mtx) * pixel / np.linalg.norm(np.linalg.inv(mtx) * pixel)
-
-      # And add it to the list!
-      self.logic.addPointLinePair(tip_cam, origin_sen, directionVec_sen)
-
-      if self.developerMode:
-        self.rayList.append([tip_cam, origin_sen, directionVec_sen])
-
-      countString = str(self.logic.countMarkerToSensor()) + "/" + str(self.captureCountSpinBox.value) + " points captured."
-
-      if self.logic.countMarkerToSensor() >= self.captureCountSpinBox.value:
-        result, videoCameraToImage, string = self.calcRegAndBuildString()
-        if result and self.developerMode:
-          for combination in self.rayList:
-            logging.debug("x: " + str(combination[0]))
-            logging.debug("origin: " + str(combination[1]))
-            logging.debug("dir: " + str(combination[2]))
-
-          trans = vtk.vtkTransform()
-          trans.PostMultiply()
-          trans.Identity()
-          trans.Concatenate(self.stylusTipToVideoCamera)
-          trans.Concatenate(videoCameraToImage)
-
-          posePosition = trans.GetPosition()
-
-          xPrime = posePosition[0] / posePosition[2]
-          yPrime = posePosition[1] / posePosition[2]
-
-          u = (mtx[0, 0] * xPrime) + mtx[0, 2]
-          v = (mtx[1, 1] * yPrime) + mtx[1, 2]
-
-          logging.debug("undistorted point: " + str(undistPoint[0, 0, 0]) + "," + str(undistPoint[0, 0, 1]))
-          logging.debug("u,v: " + str(u) + "," + str(v))
-        self.trackerResultsLabel.text = countString + " " + string
-      else:
-        self.trackerResultsLabel.text = countString
+      self.calculatePointAndLinePair(point, tip_cam)
 
       # Allow markups module some time to process the new markup, but then quickly delete it
       # Avoids VTK errors in log
@@ -625,11 +570,14 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
   @vtk.calldata_type(vtk.VTK_OBJECT)
   def onAutomaticSegmentationResult(self, caller, event, callData):
     if self.autoSegmentationState == 'running':
-      # TODO: process segmented center in image and add to registration input
-      pass
+      point = np.zeros((1, 1, 2), dtype=np.float64)
+      point[0, 0, 0] = abs(callData.CenterX)
+      point[0, 0, 1] = abs(callData.CenterY)
+
+      self.calculatePointAndLinePair(point, callData.Tip_Camera)
 
     if self.autoSegmentationState == 'running' or self.autoSegmentationState == 'preview':
-      # call it again with latest inputs parameters
+      # Call it again with latest inputs parameters
       self.videoCameraLogic.SegmentCircleInImageAsync(self.imageSelector.currentNode(), \
                                                        self.videoCameraSelector.currentNode(), \
                                                        self.stylusTipTransformSelector.currentNode(), \
@@ -642,6 +590,44 @@ class VideoCameraCalibrationWidget(ScriptedLoadableModuleWidget):
                                                        self.param2SpinBox.value, \
                                                        self.minRadiusSpinBox.value, \
                                                        self.maxRadiusSpinBox.value)
+
+  def calculatePointAndLinePair(self, point, tip_cam):
+    # Get VideoCamera parameters
+    mtx = VideoCameraCalibrationWidget.vtk3x3ToNumpy(self.videoCameraSelector.currentNode().GetIntrinsicMatrix())
+
+    if self.videoCameraSelector.currentNode().GetDistortionCoefficients().GetNumberOfValues() != 0:
+      dist = np.asarray(
+        np.zeros((1, self.videoCameraSelector.currentNode().GetDistortionCoefficients().GetNumberOfValues()),
+                 dtype=np.float64))
+      for i in range(0, self.videoCameraSelector.currentNode().GetDistortionCoefficients().GetNumberOfValues()):
+        dist[0, i] = self.videoCameraSelector.currentNode().GetDistortionCoefficients().GetValue(i)
+    else:
+      dist = np.asarray([], dtype=np.float64)
+
+    # Origin - always 0, 0, 0
+    origin_sen = np.asarray([[0.0], [0.0], [0.0]], dtype=np.float64)
+
+    # Calculate the direction vector for the given pixel (after undistortion)
+    pixel_sen = np.vstack((cv2.undistortPoints(point, mtx, dist, P=mtx), np.array([1.0], dtype=np.float64)))
+
+    # Find the inverse of the videoCamera intrinsic param matrix
+    # Calculate direction vector by multiplying the inverse of the intrinsic param matrix by the pixel
+    directionVec_sen = np.linalg.inv(mtx) * pixel_sen / np.linalg.norm(np.linalg.inv(mtx) * pixel_sen)
+
+    # Add it to the list!
+    self.logic.addPointLinePair(tip_cam, origin_sen, directionVec_sen)
+
+    if self.developerMode:
+      self.rayList.append([tip_cam, origin_sen, directionVec_sen])
+
+    countString = str(self.logic.countMarkerToSensor()) + "/" + str(
+      self.captureCountSpinBox.value) + " points captured."
+
+    if self.logic.countMarkerToSensor() >= self.captureCountSpinBox.value:
+      result, videoCameraToImage, string = self.calcRegAndBuildString()
+      self.trackerResultsLabel.text = countString + " " + string
+    else:
+      self.trackerResultsLabel.text = countString
 
 # VideoCameraCalibrationLogic
 class VideoCameraCalibrationLogic(ScriptedLoadableModuleLogic):

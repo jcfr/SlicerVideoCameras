@@ -27,6 +27,7 @@ Version:   $Revision: 1.0 $
 // Slicer includes
 #include <vtkSlicerModuleLogic.h>
 #include <vtkMRMLScalarVolumeNode.h>
+#include <vtkMRMLLinearTransformNode.h>
 
 // MRML includes
 
@@ -48,6 +49,7 @@ public:
   float       CenterX;
   float       CenterY;
   float       Radius;
+  float       Tip_Camera[3];
 };
 
 /// \ingroup Slicer_QtModules_ExtensionTemplate
@@ -74,11 +76,11 @@ public:
   /// Threaded functionality to automatically segment a red circle from an image node (which is expected to continually change)
   void SegmentCircleInImageAsync(vtkMRMLScalarVolumeNode* volumeNode,
                                  vtkMRMLVideoCameraNode* videoCamera,
+                                 vtkMRMLLinearTransformNode* tipToCameraNode,
                                  double colorRange1Low[3],
                                  double colorRange1High[3],
                                  double colorRange2Low[3],
                                  double colorRange2High[3],
-                                 vtkMatrix4x4* tipToCameraTransform,
                                  double minDist,
                                  double param1,
                                  double param2,
@@ -110,29 +112,28 @@ protected:
   public:
     vtkSetObjectMacro(AutomaticSegmentationCameraNode, vtkMRMLVideoCameraNode);
     vtkSetObjectMacro(AutomaticSegmentationImageNode, vtkMRMLScalarVolumeNode);
+    vtkSetObjectMacro(TipToCameraNode, vtkMRMLLinearTransformNode);
 
     static vtkAutoSegmentationParameters* New();
     vtkTypeMacro(vtkAutoSegmentationParameters, vtkObject);
 
     vtkMRMLScalarVolumeNode*              AutomaticSegmentationImageNode;
     vtkMRMLVideoCameraNode*               AutomaticSegmentationCameraNode;
+    vtkMRMLLinearTransformNode*           TipToCameraNode;
     std::array<std::array<double, 3>, 4>  ColorRanges;
-    vtkMatrix4x4*                         TipTransform;
-    vtkMatrix4x4*                         CameraTransform;
     double                                MinDist;
     double                                Param1;
     double                                Param2;
     int                                   MinRadius;
     int                                   MaxRadius;
-
     vtkSlicerVideoCamerasLogic*           ParentLogic;
   };
 
-  vtkSmartPointer<vtkMultiThreader>   Threader;
-  int                                 ThreadID;
-  vtkSmartPointer<vtkMutexLock>       ThreadMutexLock;
-  vtkSmartPointer<vtkMutexLock>       EventQueueMutex;
-  std::queue<vtkSlicerVideoCamerasAutomaticSegmentationResult*>  ResultQueue;
+  vtkSmartPointer<vtkMultiThreader>                               Threader;
+  int                                                             ThreadID;
+  vtkSmartPointer<vtkMutexLock>                                   ThreadMutexLock;
+  vtkSmartPointer<vtkMutexLock>                                   EventQueueMutex;
+  std::queue<vtkSlicerVideoCamerasAutomaticSegmentationResult*>   ResultQueue;
 
 private:
   vtkSlicerVideoCamerasLogic(const vtkSlicerVideoCamerasLogic&); // Not implemented
