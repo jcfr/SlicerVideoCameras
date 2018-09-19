@@ -142,6 +142,7 @@ void vtkSlicerVideoCamerasLogic::SegmentCircleInImageAsync(vtkMRMLScalarVolumeNo
 
   segmentationParameters->SetAutomaticSegmentationImageNode(volumeNode);
   segmentationParameters->SetAutomaticSegmentationCameraNode(cameraNode);
+  segmentationParameters->SetTipToCameraNode(tipToCameraNode);
   segmentationParameters->ColorRanges[0][0] = colorRange1Low[0];
   segmentationParameters->ColorRanges[0][1] = colorRange1Low[1];
   segmentationParameters->ColorRanges[0][2] = colorRange1Low[2];
